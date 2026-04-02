@@ -1,0 +1,16 @@
+{
+  "name": "wumpus-monorepo",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "setup": "npm install && uv venv --clear && . .venv/bin/activate && uv pip install -r backend/requirements.txt",
+    "dev": "concurrently \"npm run dev -w frontend\" \"cd backend && ../.venv/bin/uvicorn main:app --reload\"",
+    "frontend": "npm run dev -w frontend",
+    "backend": "cd backend && ../.venv/bin/uvicorn main:app --reload"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from groq import Groq
+from google import genai
 import os
 from dotenv import load_dotenv
 
@@ -16,7 +16,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 env   = WumpusEnv(size=4)
 agent = QLearningAgent(state_size=env.state_size, action_size=env.action_size)
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -110,8 +110,8 @@ def get_stats():
 
 @app.post("/explain")
 async def explain_decision(req: ExplainRequest):
-    if not os.getenv("GROQ_API_KEY"):
-        return {"explanation": "Set GROQ_API_KEY in .env to enable AI explanations."}
+    if not os.getenv("GOOGLE_API_KEY"):
+        return {"explanation": "Set GOOGLE_API_KEY in .env to enable AI explanations."}
 
     pos = req.state.get("agent_pos", [0, 0])
     perceptions = req.state.get("perceptions", {})
@@ -127,21 +127,18 @@ Episode: {req.episode} | Total reward so far: {req.total_reward}
 In 2-3 short sentences, explain WHY the agent chose this action. Be educational and concise."""
 
     try:
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are an AI explaining reinforcement learning decisions."},
-                {"role": "user", "content": prompt}
-            ]
+        response = client.models.generate_content(
+            model='gemini-3.1-flash-lite-preview',
+            contents=prompt
         )
-        return {"explanation": response.choices[0].message.content}
+        return {"explanation": response.text}
 
     except Exception as e:
-        return {"explanation": f"Groq unavailable: {e}"}
+        return {"explanation": f"Gemini unavailable: {e}"}
 
 @app.post("/summarize_episode")
 async def summarize_episode(req: EpisodeSummaryRequest):
-    if not os.getenv("GROQ_API_KEY"):
+    if not os.getenv("GOOGLE_API_KEY"):
         return {"summary": f"Episode {req.episode} done. Reward: {req.total_reward:.1f}"}
 
     outcome = "found the gold and won" if req.won else "died or ran out of moves"
@@ -151,14 +148,11 @@ Episode {req.episode}: Agent {outcome}. Reward: {req.total_reward:.1f}, Steps: {
 What does this mean for the agent's learning progress?"""
 
     try:
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You summarize reinforcement learning episodes."},
-                {"role": "user", "content": prompt}
-            ]
+        response = client.models.generate_content(
+            model='gemini-3.1-flash-lite-preview',
+            contents=prompt
         )
-        return {"summary": response.choices[0].message.content}
+        return {"summary": response.text}
 
     except Exception as e:
-        return {"summary": f"Groq unavailable: {e}"}
+        return {"summary": f"Gemini unavailable: {e}"}
