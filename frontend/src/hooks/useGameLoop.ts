@@ -9,7 +9,7 @@ export function useGameLoop() {
   const [stats, setStats]               = useState<StatsResponse | null>(null);
   const [log, setLog]                   = useState<LogEntry[]>([]);
   const [isRunning, setIsRunning]       = useState(false);
-  const [speed, setSpeed]               = useState(400);
+  const [speed, setSpeed]               = useState(500); // 1x Speed Default
   const [lastStep, setLastStep]         = useState<StepResponse | null>(null);
   const [aiNarration, setAiNarration]   = useState("");
   const [episodeSummary, setEpisodeSummary] = useState("");

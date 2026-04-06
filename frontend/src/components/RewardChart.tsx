@@ -1,6 +1,7 @@
-import React from "react";
+import React, { memo } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid,
          Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { Skeleton } from "./Skeleton";
 
 interface Props { rewards: number[] }
 
@@ -11,15 +12,17 @@ function movingAvg(arr: number[], w = 10) {
   });
 }
 
-export const RewardChart: React.FC<Props> = ({ rewards }) => {
+export const RewardChart: React.FC<Props> = memo(({ rewards }) => {
   if (rewards.length === 0)
-    return <div className="chart-empty">No episodes yet — start the agent</div>;
+    return <div className="loading-grid" style={{ padding: '0', height: '100%' }}>
+      <Skeleton variant="rect" width="100%" height="100%" />
+    </div>;
 
   const avg  = movingAvg(rewards);
   const data = rewards.map((r, i) => ({ episode: i + 1, reward: r, avg: avg[i] }));
 
   return (
-    <ResponsiveContainer width="100%" height={180}>
+    <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: -10 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
         <XAxis dataKey="episode" tick={{ fill: "#7a8fa6", fontSize: 10 }} tickLine={false} />
@@ -34,4 +37,4 @@ export const RewardChart: React.FC<Props> = ({ rewards }) => {
       </LineChart>
     </ResponsiveContainer>
   );
-};
+});
