@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -48,6 +49,7 @@ class EpisodeSummaryRequest(BaseModel):
     steps: int
     won: bool
     epsilon: float
+    reason: Optional[str] = None
 
 class ResetResponse(BaseModel):
     state: dict
@@ -94,10 +96,21 @@ In 2-3 short sentences, explain WHY the agent chose this action. Be educational 
     except Exception as e:
         return f"Gemini unavailable: {e}"
 
-async def get_summary(episode: int, total_reward: float, steps: int, won: bool, epsilon: float):
+async def get_summary(episode: int, total_reward: float, steps: int, won: bool, epsilon: float, reason: Optional[str] = None):
     if not os.getenv("GOOGLE_API_KEY"):
         return f"Episode {episode} done. Reward: {total_reward:.1f}"
-    outcome = "found the gold and won" if won else "died or ran out of moves"
+    
+    if won:
+        outcome = "found the gold and won"
+    elif reason == "pit":
+        outcome = "fell into a pit and died"
+    elif reason == "wumpus":
+        outcome = "was eaten by the Wumpus"
+    elif reason == "exhausted":
+        outcome = "ran out of moves (exhaustion)"
+    else:
+        outcome = "died or ran out of moves"
+        
     prompt = f"""Narrate this Wumpus World RL episode in 2 sentences (casual, educational):
 Episode {episode}: Agent {outcome}. Reward: {total_reward:.1f}, Steps: {steps}, Epsilon: {epsilon:.3f}.
 What does this mean for the agent's learning progress?"""
@@ -148,6 +161,47 @@ def get_stats():
         "learning_rate": agent.lr, "discount": agent.gamma,
     }
 
+@app.get("/download_knowledge", response_class=PlainTextResponse)
+def download_knowledge():
+    """Converts the Q-table into Predicate Logic implications."""
+    lines = ["% Wumpus World - Agent Knowledge Representation (Trained Policy)",
+             "% format: at(Row, Col) ∧ arrow(X) ∧ wumpus(S) ∧ [Breeze, Stench, Glitter] ⇒ action(A)", ""]
+    
+    actions = env.ACTION_NAMES
+    
+    # Sort keys for a cleaner output
+    sorted_states = sorted(agent.q_table.keys())
+    
+    for state_key in sorted_states:
+        q_values = agent.q_table[state_key]
+        if all(v == 0.0 for v in q_values):
+            continue
+            
+        parts = state_key.split("_")
+        if len(parts) < 7: continue
+        
+        r, c, arrow, wumpus, b, s, g = parts
+        best_idx = q_values.index(max(q_values))
+        best_action = actions[best_idx]
+        
+        # Build logical predicate
+        at      = f"at({r},{c})"
+        has_arr = f"arrow({arrow})"
+        w_alive = f"wumpus({'alive' if wumpus=='1' else 'dead'})"
+        percept = []
+        if b == '1': percept.append("breeze")
+        if s == '1': percept.append("stench")
+        if g == '1': percept.append("glitter")
+        
+        percept_str = " ∧ ".join(percept) if percept else "clear"
+        logic_str = f"{at} ∧ {has_arr} ∧ {w_alive} ∧ {percept_str} ⇒ action({best_action})"
+        lines.append(logic_str)
+        
+    if len(lines) <= 3:
+        lines.append("% No knowledge learned yet. Episode history empty.")
+        
+    return "\n".join(lines)
+
 @app.post("/explain")
 async def explain_decision(req: ExplainRequest):
     step_data = StepResponse(
@@ -161,7 +215,7 @@ async def explain_decision(req: ExplainRequest):
 
 @app.post("/summarize_episode")
 async def summarize_episode_route(req: EpisodeSummaryRequest):
-    summary = await get_summary(req.episode, req.total_reward, req.steps, req.won, req.epsilon)
+    summary = await get_summary(req.episode, req.total_reward, req.steps, req.won, req.epsilon, req.reason)
     return {"summary": summary}
 
 @app.websocket("/ws")
@@ -177,21 +231,41 @@ async def websocket_endpoint(websocket: WebSocket):
             while True:
                 if state["running"]:
                     if env.done or state["episode_steps"] >= MAX_STEPS_PER_EPISODE:
+                        if not env.done:
+                            env.done = True
+                            env.done_reason = "exhausted"
+                            # Send final state so frontend sees it's done
+                            await websocket.send_json({
+                                "type": "step", 
+                                "data": {
+                                    "state": env.get_state_dict(),
+                                    "action": -1,
+                                    "action_name": "NONE",
+                                    "reward": 0,
+                                    "done": True,
+                                    "episode": agent.episode,
+                                    "total_steps": agent.step_count,
+                                    "epsilon": agent.epsilon,
+                                    "total_reward": agent.total_reward,
+                                    "q_values": [0] * env.action_size
+                                }
+                            })
+                        
                         # Episode End - Start summary task but don't block the loop logic
-                        async def handle_summary(ep, reward, steps, won, eps):
-                            summary = await get_summary(ep, reward, steps, won, eps)
+                        async def handle_summary(ep, reward, steps, won, eps, reason):
+                            summary = await get_summary(ep, reward, steps, won, eps, reason)
                             await websocket.send_json({"type": "summary", "data": summary})
 
                         asyncio.create_task(handle_summary(
                             agent.episode, agent.total_reward, state["episode_steps"],
-                            env.has_gold, agent.epsilon
+                            env.has_gold, agent.epsilon, env.done_reason
                         ))
                         
                         # Stats update
                         stats = get_stats()
                         await websocket.send_json({"type": "stats", "data": stats})
                         
-                        await asyncio.sleep(0.8) # UI Delay for death/win visibility
+                        await asyncio.sleep(3.0) # Sync with 3s countdown
                         
                         # Reset for next episode
                         env.reset()

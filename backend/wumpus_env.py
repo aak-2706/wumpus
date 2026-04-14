@@ -25,6 +25,7 @@ class WumpusEnv:
         self.has_gold = False
         self.wumpus_alive = True
         self.done = False
+        self.done_reason = None # "win", "pit", "wumpus", "exhausted"
         self._generate_world()
 
     def _generate_world(self):
@@ -42,6 +43,7 @@ class WumpusEnv:
         self.has_gold = False
         self.wumpus_alive = True
         self.done = False
+        self.done_reason = None
 
     def reset(self):
         self._generate_world()
@@ -80,9 +82,11 @@ class WumpusEnv:
                 if self.agent_pos in self.pits:
                     reward = -100.0
                     self.done = True
+                    self.done_reason = "pit"
                 elif self.agent_pos == self.wumpus_pos and self.wumpus_alive:
                     reward = -100.0
                     self.done = True
+                    self.done_reason = "wumpus"
 
         elif action == self.ACTION_SHOOT:
             if self.has_arrow:
@@ -99,6 +103,7 @@ class WumpusEnv:
                 self.has_gold = True
                 reward = 100.0
                 self.done = True
+                self.done_reason = "win"
 
         return self.get_state_key(), reward, self.done
 
@@ -124,6 +129,7 @@ class WumpusEnv:
             "has_gold": self.has_gold,
             "has_arrow": self.has_arrow,
             "done": self.done,
+            "done_reason": self.done_reason,
             "size": self.size,
             "perceptions": perceptions,
         }

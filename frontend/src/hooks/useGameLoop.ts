@@ -70,9 +70,16 @@ export function useGameLoop() {
     wsClient.sendCommand({ command: "stop" });
   }, []);
 
-  const reset = useCallback(() => {
+  const reset = useCallback(async () => {
     stop();
-    wsClient.sendCommand({ command: "reset" });
+    try {
+      await fetch("http://localhost:8000/full_reset", { method: "POST" });
+      window.location.reload();
+    } catch (err) {
+      console.error("Reset failed:", err);
+      // Fallback to reload anyway
+      window.location.reload();
+    }
   }, [stop]);
 
   const updateSpeed = useCallback((newSpeed: number) => {

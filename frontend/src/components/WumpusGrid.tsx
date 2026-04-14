@@ -9,9 +9,12 @@ import {
   Sparkles,
   User,
   Home,
-  Play
+  Play,
+  Download,
+  Info
 } from "lucide-react";
 import type { GameState } from "../types";
+import { HelpModal } from "./HelpModal";
 
 interface CellProps {
   row: number;
@@ -44,7 +47,7 @@ const GridCell = React.memo(({
       <span className="cell-coord">{row},{col}</span>
 
       {isPit && (
-        <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15 }} data-tooltip="Pit (Deadly Trap)">
+        <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15 }}>
           <Disc size={iconMd} color="var(--red)" strokeWidth={3} fill="rgba(255,85,85,0.2)" className="icon-pit" />
         </motion.div>
       )}
@@ -54,7 +57,6 @@ const GridCell = React.memo(({
           initial={{ scale: 0, rotate: -45, opacity: 0 }}
           animate={{ scale: 1, rotate: 0, opacity: 1 }}
           transition={{ type: "spring", stiffness: 180, damping: 12 }}
-          data-tooltip="Wumpus (Dangerous!)"
         >
           <Ghost size={iconLg} color="var(--orange)" strokeWidth={2.5} className="icon-wumpus" />
         </motion.div>
@@ -66,14 +68,13 @@ const GridCell = React.memo(({
           initial={{ scale: 0 }}
           animate={{ scale: 1, y: [0, -4, 0] }}
           transition={{ scale: { type: "spring" }, y: { repeat: Infinity, duration: 2 } }}
-          data-tooltip="Gold (Victory!)"
         >
           <Trophy size={iconLg} color="var(--gold)" strokeWidth={2.5} />
         </motion.div>
       )}
 
       {isStart && !isAgent && !isPit && !isWumpus && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }} data-tooltip="Starting Position">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
           <Home size={iconSm} className="icon-dim" color="var(--text3)" />
         </motion.div>
       )}
@@ -83,7 +84,6 @@ const GridCell = React.memo(({
           layoutId="agent"
           className="agent-bubble"
           transition={{ type: "spring", stiffness: 350, damping: 25 }}
-          data-tooltip="Agent (Current Location)"
         >
           <motion.div
             animate={{ y: [0, -3, 0] }}
@@ -94,17 +94,17 @@ const GridCell = React.memo(({
 
           <div className="perception-icons">
             {perceptions.breeze && (
-              <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", delay: 0.1 }} className="perception-tag breeze" data-tooltip="Breeze (Pit nearby)">
+              <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", delay: 0.1 }} className="perception-tag breeze">
                 <Wind size={iconPerc} color="var(--accent)" />
               </motion.div>
             )}
             {perceptions.stench && (
-              <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", delay: 0.2 }} className="perception-tag stench" data-tooltip="Stench (Wumpus nearby)">
+              <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", delay: 0.2 }} className="perception-tag stench">
                 <Biohazard size={iconPerc} color="var(--orange)" />
               </motion.div>
             )}
             {perceptions.glitter && (
-              <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", delay: 0.15 }} className="perception-tag glitter" data-tooltip="Glitter (Gold nearby)">
+              <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", delay: 0.15 }} className="perception-tag glitter">
                 <Sparkles size={iconPerc} color="var(--gold)" />
               </motion.div>
             )}
@@ -115,20 +115,21 @@ const GridCell = React.memo(({
   );
 }, (prev, next) => {
   return prev.cellSize === next.cellSize &&
-         prev.isAgent === next.isAgent &&
-         prev.isPit === next.isPit &&
-         prev.isWumpus === next.isWumpus &&
-         prev.isGold === next.isGold &&
-         prev.isStart === next.isStart &&
-         prev.perceptions.breeze === next.perceptions.breeze &&
-         prev.perceptions.stench === next.perceptions.stench &&
-         prev.perceptions.glitter === next.perceptions.glitter;
+    prev.isAgent === next.isAgent &&
+    prev.isPit === next.isPit &&
+    prev.isWumpus === next.isWumpus &&
+    prev.isGold === next.isGold &&
+    prev.isStart === next.isStart &&
+    prev.perceptions.breeze === next.perceptions.breeze &&
+    prev.perceptions.stench === next.perceptions.stench &&
+    prev.perceptions.glitter === next.perceptions.glitter;
 });
 
 interface Props {
   state: GameState;
   showStartOverlay?: boolean;
   onStart?: () => void;
+  onOpenHelp?: () => void;
   totalSteps?: number;
 }
 
@@ -136,10 +137,42 @@ function arrEq(a: number[], b: number[]) { return a[0] === b[0] && a[1] === b[1]
 
 const EMPTY_PERCEPTIONS = { breeze: false, stench: false, glitter: false };
 
-export const WumpusGrid: React.FC<Props> = ({ state, showStartOverlay, onStart, totalSteps = 0 }) => {
+export const WumpusGrid: React.FC<Props> = ({ state, showStartOverlay, onStart, onOpenHelp, totalSteps = 0 }) => {
   const { size, agent_pos, pits, wumpus_pos, wumpus_alive, gold_pos, has_gold, perceptions, done } = state;
   const containerRef = useRef<HTMLDivElement>(null);
   const [cellSize, setCellSize] = useState(88);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [showDoneOverlay, setShowDoneOverlay] = useState(false);
+
+  const handleDownload = () => {
+    const link = document.createElement("a");
+    link.href = "http://localhost:8000/download_knowledge";
+    link.setAttribute("download", `agent_policy_logic.txt`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  useEffect(() => {
+    if (done) {
+      // 1. Wait 400ms before showing overlay (see the agent fall/win)
+      const delayTimer = setTimeout(() => setShowDoneOverlay(true), 400);
+
+      // 2. Start the 3, 2, 1 countdown
+      setCountdown(3);
+      const countTimer = setInterval(() => {
+        setCountdown((prev) => (prev !== null && prev > 1 ? prev - 1 : 1));
+      }, 1000);
+
+      return () => {
+        clearTimeout(delayTimer);
+        clearInterval(countTimer);
+      };
+    } else {
+      setShowDoneOverlay(false);
+      setCountdown(null);
+    }
+  }, [done]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -172,12 +205,12 @@ export const WumpusGrid: React.FC<Props> = ({ state, showStartOverlay, onStart, 
               className="grid-overlay overlay-ready"
             >
               <div className="overlay-title">
-                {totalSteps > 0 ? <>Simulation<br/>Paused</> : <>System<br/>Ready</>}
+                {totalSteps > 0 ? <>Simulation<br />Paused</> : <>System<br />Ready</>}
               </div>
               <div className="overlay-subtitle">
                 {totalSteps > 0
-                  ? <>{totalSteps} steps completed.<br/>Neural link active.</>
-                  : <>Agent online.<br/>Awaiting command.</>}
+                  ? <>{totalSteps} steps completed.<br />Neural link active.</>
+                  : <>Agent online.<br />Awaiting command.</>}
               </div>
 
               <motion.button
@@ -189,22 +222,109 @@ export const WumpusGrid: React.FC<Props> = ({ state, showStartOverlay, onStart, 
                 <Play size={20} fill="currentColor" />
                 <span>{totalSteps > 0 ? "Resume Mission" : "Initialize Mission"}</span>
               </motion.button>
+
+              {showStartOverlay && (
+                <motion.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  whileHover={{ scale: 1.05, background: "rgba(0, 229, 255, 0.1)" }}
+                  whileTap={{ scale: 0.95 }}
+                  className="btn"
+                  style={{
+                    marginTop: '12px',
+                    background: 'transparent',
+                    border: '1px solid var(--accent)',
+                    color: 'var(--accent)',
+                    padding: '10px 24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}
+                  onClick={onOpenHelp}
+                >
+                  <Info size={18} />
+                  <span>Mission Briefing</span>
+                </motion.button>
+              )}
+
+              {totalSteps > 0 && (
+                <motion.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  whileHover={{ scale: 1.05, background: "rgba(0, 229, 255, 0.1)" }}
+                  whileTap={{ scale: 0.95 }}
+                  className="btn"
+                  style={{
+                    marginTop: '12px',
+                    background: 'transparent',
+                    border: '1px solid var(--accent)',
+                    color: 'var(--accent)',
+                    padding: '10px 24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}
+                  onClick={handleDownload}
+                >
+                  <Download size={18} />
+                  <span>Download Neural Link</span>
+                </motion.button>
+              )}
             </motion.div>
           )}
 
-          {done && (
+          {showDoneOverlay && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className={`grid-overlay ${has_gold ? "overlay-win" : "overlay-loss"}`}
+              className={`grid-overlay ${state.done_reason === "win" ? "overlay-win" :
+                state.done_reason === "exhausted" ? "overlay-warning" : "overlay-loss"
+                }`}
             >
               <div className="overlay-title">
-                {has_gold ? <>Mission<br/>Accomplished</> : <>System<br/>Failure</>}
+                {state.done_reason === "win" && <>Mission<br />Accomplished</>}
+                {state.done_reason === "pit" && <>Abyssal<br />Descent</>}
+                {state.done_reason === "wumpus" && <>Predator<br />Strike</>}
+                {state.done_reason === "exhausted" && <>Battery<br />Depleted</>}
+                {!state.done_reason && <>System<br />Failure</>}
               </div>
               <div className="overlay-subtitle">
-                {has_gold ? <>Target retrieved.<br/>Extraction successful.</> : <>Agent terminated.<br/>Connection lost.</>}
+                {state.done_reason === "win" && <>Target retrieved.<br />Extraction successful.</>}
+                {state.done_reason === "pit" && <>Agent fell into a pit.<br />Signal lost in the depths.</>}
+                {state.done_reason === "wumpus" && <>Agent was eaten by Wumpus.<br />Vital signs flatlined.</>}
+                {state.done_reason === "exhausted" && <>Max steps reached.<br />Emergency shutdown initiated.</>}
+                {!state.done_reason && <>An unknown error occurred.<br />Re-initializing link...</>}
               </div>
+
+              {countdown !== null && (
+                <div style={{
+                  marginTop: '20px',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '12px',
+                  color: 'rgba(255,255,255,0.6)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px'
+                }}>
+                  <div style={{
+                    width: '32px', height: '32px',
+                    borderRadius: '50%',
+                    border: '2px solid currentColor',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '18px',
+                    fontWeight: 'bold',
+                    color: state.done_reason === "win" ? 'var(--gold)' : (state.done_reason === "exhausted" ? 'var(--orange)' : 'var(--red)')
+                  }}>
+                    {countdown}
+                  </div>
+                  <span style={{ letterSpacing: '2px', textTransform: 'uppercase' }}>
+                    {state.done_reason === "win" ? "Next Mission in..." : "Retrying in..."}
+                  </span>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

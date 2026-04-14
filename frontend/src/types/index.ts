@@ -15,6 +15,7 @@ export interface GameState {
   has_gold: boolean;
   has_arrow: boolean;
   done: boolean;
+  done_reason: "win" | "pit" | "wumpus" | "exhausted" | null;
   size: number;
   perceptions: Perceptions;
 }

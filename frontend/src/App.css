@@ -947,6 +947,58 @@ body {
   scrollbar-color: var(--border2) transparent;
 }
 
+/* ── Toggle Switch ────────────────────────────────────────────────────── */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: .3s;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 229, 255, 0.2);
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--text3);
+  transition: .3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: rgba(0, 229, 255, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(14px);
+  background-color: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
 /* ── Overlays ──────────────────────────────────────────────────────────── */
 .grid-overlay {
   position: absolute;
@@ -972,6 +1024,12 @@ body {
   background: rgba(0, 0, 0, 0.75);
   border: 1px solid var(--red);
   box-shadow: inset 0 0 80px rgba(255, 85, 85, 0.12), 0 0 40px rgba(255, 85, 85, 0.08);
+}
+
+.overlay-warning {
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid var(--orange);
+  box-shadow: inset 0 0 80px rgba(255, 184, 108, 0.12), 0 0 40px rgba(255, 184, 108, 0.08);
 }
 
 .overlay-ready {
@@ -1045,63 +1103,178 @@ body {
   text-shadow: 0 0 24px rgba(255, 85, 85, 0.6);
 }
 
+.overlay-warning .overlay-title {
+  color: var(--orange);
+  text-shadow: 0 0 24px rgba(255, 184, 108, 0.6);
+}
+
 .overlay-ready .overlay-title {
   color: var(--accent);
   text-shadow: 0 0 24px rgba(0, 229, 255, 0.6);
 }
 
-/* ── Tooltips ──────────────────────────────────────────────────────────── */
-[data-tooltip] {
-  position: relative;
-  cursor: help;
+/* ── Help Modal ────────────────────────────────────────────────────────── */
+.help-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
 }
 
-[data-tooltip]::before {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 125%;
-  left: 50%;
-  transform: translateX(-50%) translateY(8px);
-  padding: 6px 12px;
-  background: rgba(5, 10, 16, 0.97);
-  backdrop-filter: blur(8px);
+.help-modal-card {
+  width: 100%;
+  max-width: 500px;
+  background: var(--bg2);
   border: 1px solid var(--accent);
   border-radius: 0;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
-  color: #fff;
-  font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 600;
-  white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  transition: all var(--t-base);
-  z-index: 10000;
-  pointer-events: none;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), var(--glow-sm);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 32px;
+  box-shadow: 0 0 40px rgba(0, 229, 255, 0.15);
 }
 
-[data-tooltip]::after {
-  content: '';
+.help-close-btn {
   position: absolute;
-  bottom: 115%;
-  left: 50%;
-  transform: translateX(-50%) translateY(8px);
-  border-width: 6px;
-  border-style: solid;
-  border-color: var(--accent) transparent transparent transparent;
-  opacity: 0;
-  visibility: hidden;
-  transition: all var(--t-base);
-  z-index: 10000;
-  pointer-events: none;
+  top: 16px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  transition: color var(--t-fast);
 }
 
-[data-tooltip]:hover::before,
-[data-tooltip]:hover::after {
-  opacity: 1;
-  visibility: visible;
-  transform: translateX(-50%) translateY(0);
+.help-close-btn:hover {
+  color: var(--red);
+}
+
+.help-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.help-modal-header h2 {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-size: 20px;
+  color: var(--accent);
+}
+
+.help-modal-body {
+  flex: 1;
+  min-height: 200px;
+}
+
+.help-slide-content {
+  font-family: 'Syne', sans-serif;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.help-slide-content p {
+  margin-bottom: 16px;
+}
+
+.help-grid-preview {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.preview-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+}
+
+.hazard-list, .perception-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.hazard-item, .perception-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.hazard-item strong, .perception-item strong {
+  color: var(--text);
+  display: block;
+}
+
+.action-list {
+  list-style: none;
+  margin-bottom: 16px;
+}
+
+.action-list li {
+  margin-bottom: 8px;
+  padding-left: 16px;
+  position: relative;
+}
+
+.action-list li::before {
+  content: '>';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.help-note {
+  font-size: 12px;
+  color: var(--text3);
+  font-style: italic;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.help-modal-footer {
+  margin-top: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.slide-indicators {
+  display: flex;
+  gap: 8px;
+}
+
+.indicator {
+  width: 8px;
+  height: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  transition: all var(--t-base);
+}
+
+.indicator.active {
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  border-color: var(--accent);
+}
+
+.help-nav-btns {
+  display: flex;
+  gap: 8px;
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
