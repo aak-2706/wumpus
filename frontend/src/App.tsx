@@ -20,8 +20,8 @@ import { useGameLoop } from "./hooks/useGameLoop";
 import "./App.css";
 
 const SPEEDS = [
-  { label: "0.5×", ms: 1000 }, { label: "1×", ms: 500 },
-  { label: "2×", ms: 250 }, { label: "4×", ms: 100 }, { label: "Max", ms: 20 },
+  { label: "0.5×", ms: 1500 }, { label: "1×", ms: 800 },
+  { label: "2×", ms: 400 }, { label: "4×", ms: 200 }, { label: "Max", ms: 50 },
 ];
 
 const EMPTY_ARRAY: number[] = [];
@@ -95,6 +95,7 @@ export default function App() {
                 totalSteps={totalSteps}
                 onStart={start}
                 onOpenHelp={() => setIsHelpOpen(true)}
+                currentSpeed={speed}
               />
               : <div className="loading-grid" style={{ position: 'relative' }}>
                   <Skeleton variant="grid" style={{ maxWidth: '400px', aspectRatio: '1/1', opacity: 0.4 }} />

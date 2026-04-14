@@ -141,13 +141,14 @@ interface Props {
   onStart?: () => void;
   onOpenHelp?: () => void;
   totalSteps?: number;
+  currentSpeed?: number;
 }
 
 function arrEq(a: number[], b: number[]) { return a[0] === b[0] && a[1] === b[1]; }
 
 const EMPTY_PERCEPTIONS = { breeze: false, stench: false, glitter: false };
 
-export const WumpusGrid: React.FC<Props> = ({ state, showStartOverlay, onStart, onOpenHelp, totalSteps = 0 }) => {
+export const WumpusGrid: React.FC<Props> = ({ state, showStartOverlay, onStart, onOpenHelp, totalSteps = 0, currentSpeed = 800 }) => {
   const { size, agent_pos, pits, wumpus_pos, wumpus_alive, gold_pos, has_gold, perceptions, done } = state;
   const containerRef = useRef<HTMLDivElement>(null);
   const [cellSize, setCellSize] = useState(88);
@@ -165,25 +166,34 @@ export const WumpusGrid: React.FC<Props> = ({ state, showStartOverlay, onStart, 
 
   useEffect(() => {
     if (done) {
-      // 1. Wait 400ms before showing overlay (see the agent fall/win)
-      const delayTimer = setTimeout(() => setShowDoneOverlay(true), 400);
+      // Scale timings based on speed (baseline 800ms)
+      const speedFactor = currentSpeed / 800;
+      const revealDelay = Math.max(50, 400 * speedFactor);
+      const countdownInterval = Math.max(100, 1000 * speedFactor);
 
-      // 2. Start the 3, 2, 1 countdown
-      setCountdown(3);
-      const countTimer = setInterval(() => {
-        setCountdown((prev) => (prev !== null && prev > 1 ? prev - 1 : 1));
-      }, 1000);
+      // 1. Wait before showing overlay
+      const delayTimer = setTimeout(() => setShowDoneOverlay(true), revealDelay);
 
-      return () => {
-        clearTimeout(delayTimer);
-        clearInterval(countTimer);
-      };
+      // 2. Start the 3, 2, 1 countdown (skip if extremely fast)
+      if (currentSpeed > 100) {
+        setCountdown(3);
+        const countTimer = setInterval(() => {
+          setCountdown((prev) => (prev !== null && prev > 1 ? prev - 1 : 1));
+        }, countdownInterval);
+        return () => {
+          clearTimeout(delayTimer);
+          clearInterval(countTimer);
+        };
+      } else {
+        // Fast mode: just show overlay briefly, no text countdown needed
+        setCountdown(null);
+        return () => clearTimeout(delayTimer);
+      }
     } else {
       setShowDoneOverlay(false);
       setCountdown(null);
     }
-  }, [done]);
-
+  }, [done, currentSpeed]);
   useEffect(() => {
     if (!containerRef.current) return;
     const ro = new ResizeObserver(([entry]) => {

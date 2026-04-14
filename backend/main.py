@@ -222,7 +222,7 @@ async def summarize_episode_route(req: EpisodeSummaryRequest):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     
-    state = {"running": False, "speed": 0.5, "episode_steps": 0}
+    state = {"running": False, "speed": 0.8, "episode_steps": 0}
     MAX_STEPS_PER_EPISODE = 60
     EXPLAIN_EVERY_N = 5
 
@@ -265,7 +265,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         stats = get_stats()
                         await websocket.send_json({"type": "stats", "data": stats})
                         
-                        await asyncio.sleep(3.0) # Sync with 3s countdown
+                        # Dynamic wait: Scale 3.0s base wait by (current_speed / 0.8s baseline)
+                        # Min wait 0.2s, Max wait 4.0s
+                        wait_time = max(0.2, min(4.0, 3.0 * (state["speed"] / 0.8)))
+                        await asyncio.sleep(wait_time)
                         
                         # Reset for next episode
                         env.reset()
@@ -292,7 +295,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 await websocket.send_json({"type": "explain", "data": explanation})
                             asyncio.create_task(handle_explanation(step_data))
                     
-                    await asyncio.sleep(state["speed"])
+                        await asyncio.sleep(state["speed"])
                 else:
                     await asyncio.sleep(0.1)
         except Exception as e:
