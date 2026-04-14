@@ -47,7 +47,12 @@ const GridCell = React.memo(({
       <span className="cell-coord">{row},{col}</span>
 
       {isPit && (
-        <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15 }}>
+        <motion.div 
+          style={{ position: 'absolute' }}
+          initial={{ scale: 0, opacity: 0 }} 
+          animate={{ scale: 1, opacity: 1 }} 
+          transition={{ type: "spring", stiffness: 200, damping: 15 }}
+        >
           <Disc size={iconMd} color="var(--red)" strokeWidth={3} fill="rgba(255,85,85,0.2)" className="icon-pit" />
         </motion.div>
       )}
@@ -74,7 +79,12 @@ const GridCell = React.memo(({
       )}
 
       {isStart && !isAgent && !isPit && !isWumpus && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
+        <motion.div 
+          style={{ position: 'absolute' }}
+          initial={{ opacity: 0 }} 
+          animate={{ opacity: 1 }} 
+          transition={{ duration: 0.5 }}
+        >
           <Home size={iconSm} className="icon-dim" color="var(--text3)" />
         </motion.div>
       )}

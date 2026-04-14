@@ -320,6 +320,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 12px;
   transition: background var(--t-base), border-color var(--t-base), box-shadow var(--t-base);
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
   background: rgba(17, 34, 54, 0.4);
