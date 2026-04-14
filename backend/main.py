@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from google import genai
 import os
+import asyncio
 from dotenv import load_dotenv
 
 from wumpus_env import WumpusEnv
@@ -54,6 +55,59 @@ class ResetResponse(BaseModel):
     message: str
 
 
+# ── Core Logic Helpers ───────────────────────────────────────────────────────
+
+def perform_step():
+    state_key = env.get_state_key()
+    action    = agent.choose_action(state_key)
+    _, reward, done = env.step(action)
+    next_key  = env.get_state_key()
+    agent.update(state_key, action, reward, next_key, done)
+    agent.total_reward += reward
+    agent.step_count   += 1
+    q_vals = agent.get_q_values(state_key)
+    return StepResponse(
+        state=env.get_state_dict(), action=action,
+        action_name=env.ACTION_NAMES[action], reward=reward, done=done,
+        episode=agent.episode, total_steps=agent.step_count,
+        epsilon=round(agent.epsilon, 4), total_reward=round(agent.total_reward, 2),
+        q_values=[round(v, 3) for v in q_vals],
+    )
+
+async def get_explanation(step_data: StepResponse):
+    if not os.getenv("GOOGLE_API_KEY"):
+        return "Set GOOGLE_API_KEY in .env to enable AI explanations."
+    pos = step_data.state.get("agent_pos", [0, 0])
+    perceptions = step_data.state.get("perceptions", {})
+    prompt = f"""You are explaining a Q-learning agent's decision in Wumpus World.
+Position: row={pos[0]}, col={pos[1]}
+Perceptions: {perceptions}
+Action chosen: {step_data.action_name}
+Reward received: {step_data.reward}
+Q-values for actions {env.ACTION_NAMES}: {dict(zip(env.ACTION_NAMES, step_data.q_values))}
+Episode: {step_data.episode} | Total reward so far: {step_data.total_reward}
+
+In 2-3 short sentences, explain WHY the agent chose this action. Be educational and concise."""
+    try:
+        response = await asyncio.to_thread(client.models.generate_content, model='gemini-3.1-flash-lite-preview', contents=prompt)
+        return response.text
+    except Exception as e:
+        return f"Gemini unavailable: {e}"
+
+async def get_summary(episode: int, total_reward: float, steps: int, won: bool, epsilon: float):
+    if not os.getenv("GOOGLE_API_KEY"):
+        return f"Episode {episode} done. Reward: {total_reward:.1f}"
+    outcome = "found the gold and won" if won else "died or ran out of moves"
+    prompt = f"""Narrate this Wumpus World RL episode in 2 sentences (casual, educational):
+Episode {episode}: Agent {outcome}. Reward: {total_reward:.1f}, Steps: {steps}, Epsilon: {epsilon:.3f}.
+What does this mean for the agent's learning progress?"""
+    try:
+        response = await asyncio.to_thread(client.models.generate_content, model='gemini-3.1-flash-lite-preview', contents=prompt)
+        return response.text
+    except Exception as e:
+        return f"Gemini unavailable: {e}"
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -70,21 +124,7 @@ def reset_game():
 def step_game():
     if env.done:
         raise HTTPException(status_code=400, detail="Episode done. Call /reset first.")
-    state_key = env.get_state_key()
-    action    = agent.choose_action(state_key)
-    _, reward, done = env.step(action)
-    next_key  = env.get_state_key()
-    agent.update(state_key, action, reward, next_key, done)
-    agent.total_reward += reward
-    agent.step_count   += 1
-    q_vals = agent.get_q_values(state_key)
-    return StepResponse(
-        state=env.get_state_dict(), action=action,
-        action_name=env.ACTION_NAMES[action], reward=reward, done=done,
-        episode=agent.episode, total_steps=agent.step_count,
-        epsilon=round(agent.epsilon, 4), total_reward=round(agent.total_reward, 2),
-        q_values=[round(v, 3) for v in q_vals],
-    )
+    return perform_step()
 
 @app.post("/full_reset")
 def full_reset():
@@ -110,49 +150,111 @@ def get_stats():
 
 @app.post("/explain")
 async def explain_decision(req: ExplainRequest):
-    if not os.getenv("GOOGLE_API_KEY"):
-        return {"explanation": "Set GOOGLE_API_KEY in .env to enable AI explanations."}
-
-    pos = req.state.get("agent_pos", [0, 0])
-    perceptions = req.state.get("perceptions", {})
-
-    prompt = f"""You are explaining a Q-learning agent's decision in Wumpus World.
-Position: row={pos[0]}, col={pos[1]}
-Perceptions: {perceptions}
-Action chosen: {req.action_name}
-Reward received: {req.reward}
-Q-values for actions {env.ACTION_NAMES}: {dict(zip(env.ACTION_NAMES, req.q_values))}
-Episode: {req.episode} | Total reward so far: {req.total_reward}
-
-In 2-3 short sentences, explain WHY the agent chose this action. Be educational and concise."""
-
-    try:
-        response = client.models.generate_content(
-            model='gemini-3.1-flash-lite-preview',
-            contents=prompt
-        )
-        return {"explanation": response.text}
-
-    except Exception as e:
-        return {"explanation": f"Gemini unavailable: {e}"}
+    step_data = StepResponse(
+        state=req.state, action=0, action_name=req.action_name,
+        reward=req.reward, done=False, episode=req.episode,
+        total_steps=0, epsilon=0, total_reward=req.total_reward,
+        q_values=req.q_values
+    )
+    explanation = await get_explanation(step_data)
+    return {"explanation": explanation}
 
 @app.post("/summarize_episode")
-async def summarize_episode(req: EpisodeSummaryRequest):
-    if not os.getenv("GOOGLE_API_KEY"):
-        return {"summary": f"Episode {req.episode} done. Reward: {req.total_reward:.1f}"}
+async def summarize_episode_route(req: EpisodeSummaryRequest):
+    summary = await get_summary(req.episode, req.total_reward, req.steps, req.won, req.epsilon)
+    return {"summary": summary}
 
-    outcome = "found the gold and won" if req.won else "died or ran out of moves"
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    
+    state = {"running": False, "speed": 0.5, "episode_steps": 0}
+    MAX_STEPS_PER_EPISODE = 60
+    EXPLAIN_EVERY_N = 5
 
-    prompt = f"""Narrate this Wumpus World RL episode in 2 sentences (casual, educational):
-Episode {req.episode}: Agent {outcome}. Reward: {req.total_reward:.1f}, Steps: {req.steps}, Epsilon: {req.epsilon:.3f}.
-What does this mean for the agent's learning progress?"""
+    async def game_loop():
+        try:
+            while True:
+                if state["running"]:
+                    if env.done or state["episode_steps"] >= MAX_STEPS_PER_EPISODE:
+                        # Episode End - Start summary task but don't block the loop logic
+                        async def handle_summary(ep, reward, steps, won, eps):
+                            summary = await get_summary(ep, reward, steps, won, eps)
+                            await websocket.send_json({"type": "summary", "data": summary})
+
+                        asyncio.create_task(handle_summary(
+                            agent.episode, agent.total_reward, state["episode_steps"],
+                            env.has_gold, agent.epsilon
+                        ))
+                        
+                        # Stats update
+                        stats = get_stats()
+                        await websocket.send_json({"type": "stats", "data": stats})
+                        
+                        await asyncio.sleep(0.8) # UI Delay for death/win visibility
+                        
+                        # Reset for next episode
+                        env.reset()
+                        agent.new_episode()
+                        state["episode_steps"] = 0
+                        await websocket.send_json({
+                            "type": "reset", 
+                            "data": {"state": env.get_state_dict(), "episode": agent.episode}
+                        })
+                    else:
+                        # Perform Step
+                        step_data = perform_step()
+                        state["episode_steps"] += 1
+                        await websocket.send_json({"type": "step", "data": step_data.model_dump()})
+
+                        # Periodic Stats
+                        if agent.step_count % 10 == 0:
+                            await websocket.send_json({"type": "stats", "data": get_stats()})
+                        
+                        # AI Explanation - Non-blocking
+                        if agent.step_count % EXPLAIN_EVERY_N == 0:
+                            async def handle_explanation(data):
+                                explanation = await get_explanation(data)
+                                await websocket.send_json({"type": "explain", "data": explanation})
+                            asyncio.create_task(handle_explanation(step_data))
+                    
+                    await asyncio.sleep(state["speed"])
+                else:
+                    await asyncio.sleep(0.1)
+        except Exception as e:
+            print(f"Loop error: {e}")
+
+    # Start the background loop task
+    loop_task = asyncio.create_task(game_loop())
 
     try:
-        response = client.models.generate_content(
-            model='gemini-3.1-flash-lite-preview',
-            contents=prompt
-        )
-        return {"summary": response.text}
-
+        while True:
+            data = await websocket.receive_json()
+            cmd = data.get("command")
+            
+            if cmd == "start":
+                state["running"] = True
+                if "speed" in data:
+                    state["speed"] = data["speed"] / 1000.0
+            elif cmd == "stop":
+                state["running"] = False
+            elif cmd == "set_speed":
+                state["speed"] = data["speed"] / 1000.0
+            elif cmd == "reset":
+                state["running"] = False
+                # Full reset logic
+                global env, agent
+                env = WumpusEnv(size=4)
+                agent = QLearningAgent(state_size=env.state_size, action_size=env.action_size)
+                env.reset()
+                state["episode_steps"] = 0
+                await websocket.send_json({
+                    "type": "full_reset", 
+                    "data": {"state": env.get_state_dict(), "episode": agent.episode}
+                })
+                
+    except WebSocketDisconnect:
+        loop_task.cancel()
     except Exception as e:
-        return {"summary": f"Gemini unavailable: {e}"}
+        print(f"WS error: {e}")
+        loop_task.cancel()

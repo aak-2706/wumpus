@@ -16,7 +16,7 @@ class WumpusEnv:
     def __init__(self, size: int = 4):
         self.size = size
         self.action_size = 6
-        self.state_size = size * size * 2 * 2 * 2
+        self.state_size = size * size * 2 * 2 * 2 * 2 * 2 # pos, arrow, alive, breeze, stench, glitter
         self.pits = []
         self.wumpus_pos = []
         self.gold_pos = []
@@ -109,7 +109,8 @@ class WumpusEnv:
             f"{'1' if self.has_arrow else '0'}_"
             f"{'1' if self.wumpus_alive else '0'}_"
             f"{'1' if perceptions['breeze'] else '0'}_"
-            f"{'1' if perceptions['stench'] else '0'}"
+            f"{'1' if perceptions['stench'] else '0'}_"
+            f"{'1' if perceptions['glitter'] else '0'}"
         )
 
     def get_state_dict(self) -> Dict[str, Any]:

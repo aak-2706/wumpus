@@ -134,6 +134,8 @@ interface Props {
 
 function arrEq(a: number[], b: number[]) { return a[0] === b[0] && a[1] === b[1]; }
 
+const EMPTY_PERCEPTIONS = { breeze: false, stench: false, glitter: false };
+
 export const WumpusGrid: React.FC<Props> = ({ state, showStartOverlay, onStart, totalSteps = 0 }) => {
   const { size, agent_pos, pits, wumpus_pos, wumpus_alive, gold_pos, has_gold, perceptions, done } = state;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -226,7 +228,7 @@ export const WumpusGrid: React.FC<Props> = ({ state, showStartOverlay, onStart, 
                 isWumpus={isWumpus}
                 isGold={isGold}
                 isStart={isStart}
-                perceptions={isAgent ? perceptions : { breeze: false, stench: false, glitter: false }}
+                perceptions={isAgent ? perceptions : EMPTY_PERCEPTIONS}
               />
             );
           })

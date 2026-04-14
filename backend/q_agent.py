@@ -22,7 +22,9 @@ class QLearningAgent:
         if random.random() < self.epsilon:
             return random.randrange(self.action_size)
         q = self.q_table[state_key]
-        return int(q.index(max(q)))
+        max_q = max(q)
+        actions_with_max_q = [i for i, v in enumerate(q) if v == max_q]
+        return random.choice(actions_with_max_q)
 
     def update(self, state, action, reward, next_state, done):
         current_q = self.q_table[state][action]
