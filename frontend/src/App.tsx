@@ -20,6 +20,7 @@ import { ActionLog } from "./components/ActionLog";
 import { Skeleton } from "./components/Skeleton";
 import { HelpModal } from "./components/HelpModal";
 import { useGameLoop } from "./hooks/useGameLoop";
+import { useSingleTab } from "./hooks/useSingleTab";
 import "./App.css";
 
 const SPEEDS = [
@@ -33,6 +34,8 @@ export default function App() {
   const { gameState, stats, log, isRunning, speed, setSpeed,
     lastStep, aiNarration, episodeSummary, start, stop, reset, setAiEnabled, init,
     visibilityMode, toggleVisibility, visitedCells } = useGameLoop();
+
+  const { isBlocked: isMultiTabBlocked } = useSingleTab();
 
   const [isExplainEnabled, setIsExplainEnabled] = React.useState(false);
   const [isHelpOpen, setIsHelpOpen] = React.useState(false);
@@ -48,6 +51,43 @@ export default function App() {
     <div className="app crt-container">
       <div className="crt-overlay"></div>
       <div className="vignette"></div>
+
+      {isMultiTabBlocked && (
+        <div className="screen-block-overlay multi-tab-block">
+          <div className="screen-block-content">
+            <div className="screen-block-icon">
+              <Zap size={48} className="icon-pulse" />
+            </div>
+            <h1 className="screen-block-title">Duplicate Link</h1>
+            <p className="screen-block-message">
+              The neural interface only supports one active uplink per system. 
+              Another terminal is already connected to this mission.
+            </p>
+            <div className="screen-block-hint">
+              Close other tabs or wait for the existing connection to timeout.
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="screen-block-overlay">
+        <div className="screen-block-content">
+          <div className="screen-block-icon">
+            <Cpu size={48} className="icon-pulse" />
+          </div>
+          <h1 className="screen-block-title">Uplink Unstable</h1>
+          <p className="screen-block-message">
+            Neural interface requires a wider viewport for stable data transmission. 
+            Mobile devices and portrait tablet orientations are currently unsupported.
+          </p>
+          <div className="screen-block-hint">
+            Please rotate your device or use a desktop terminal to re-establish the link.
+          </div>
+          <div className="screen-block-specs">
+            REQUIRED: MIN-WIDTH 1024PX
+          </div>
+        </div>
+      </div>
 
       <main className="app-main">
 

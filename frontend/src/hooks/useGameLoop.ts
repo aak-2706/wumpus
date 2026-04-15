@@ -1,7 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { StepResponse, StatsResponse, LogEntry, GameState } from "../types";
 import { wsClient } from "../api/client";
-
+/**
+ * Main game loop hook to manage Wumpus World state, statistics, and AI interactions.
+ * Connects to the backend via WebSocket and provides methods to control the simulation.
+ * 
+ * @returns {Object} Game state, controls, and AI-generated narration/summaries.
+ */
 export function useGameLoop() {
   const [gameState, setGameState]       = useState<GameState | null>(null);
   const [stats, setStats]               = useState<StatsResponse | null>(null);
@@ -36,11 +41,26 @@ export function useGameLoop() {
       switch (msg.type) {
         case "step": {
           const data = msg.data as StepResponse;
+          // Batch updates to reduce re-renders
           setLastStep(data);
           setGameState(data.state);
-          addLog({ 
-            episode: data.episode, action: data.action_name,
-            reward: data.reward, pos: [data.state.agent_pos[0], data.state.agent_pos[1]] 
+          
+          setLog((prev) => [
+            { 
+              episode: data.episode, 
+              action: data.action_name,
+              reward: data.reward, 
+              pos: [data.state.agent_pos[0], data.state.agent_pos[1]],
+              id: logIdRef.current++, 
+              timestamp: Date.now() 
+            },
+            ...prev,
+          ].slice(0, 80));
+          
+          setVisitedCells(prev => {
+            const next = new Set(prev);
+            next.add(`${data.state.agent_pos[0]},${data.state.agent_pos[1]}`);
+            return next;
           });
           break;
         }

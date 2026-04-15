@@ -1,25 +1,25 @@
+import os
+import asyncio
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from google import genai
-import os
-import asyncio
-from dotenv import load_dotenv
 
 from wumpus_env import WumpusEnv
 from q_agent import QLearningAgent
-
-load_dotenv()
+from api_manager import api_manager
 
 app = FastAPI(title="Wumpus RL API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 env   = WumpusEnv(size=4)
 agent = QLearningAgent(state_size=env.state_size, action_size=env.action_size)
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -76,28 +76,49 @@ def perform_step():
         q_values=[round(v, 3) for v in q_vals],
     )
 
+def _gen_content(client, **kwargs):
+    return client.models.generate_content(**kwargs)
+
+# Simple in-memory cache for explanations to save tokens and time
+_explanation_cache = {}
+
 async def get_explanation(step_data: StepResponse):
-    if not os.getenv("GOOGLE_API_KEY"):
+    if not api_manager.has_keys():
         return "Set GOOGLE_API_KEY in .env to enable AI explanations."
+    
     pos = step_data.state.get("agent_pos", [0, 0])
     perceptions = step_data.state.get("perceptions", {})
-    prompt = f"""You are explaining a Q-learning agent's decision in Wumpus World.
-Position: row={pos[0]}, col={pos[1]}
-Perceptions: {perceptions}
-Action chosen: {step_data.action_name}
-Reward received: {step_data.reward}
-Q-values for actions {env.ACTION_NAMES}: {dict(zip(env.ACTION_NAMES, step_data.q_values))}
-Episode: {step_data.episode} | Total reward so far: {step_data.total_reward}
+    
+    # Stable cache key: (pos, perceptions, action, reward)
+    p_key = tuple(sorted(perceptions.items()))
+    cache_key = (tuple(pos), p_key, step_data.action_name, step_data.reward)
+    
+    if cache_key in _explanation_cache:
+        return _explanation_cache[cache_key]
 
-In 2-3 short sentences, explain WHY the agent chose this action. Be educational and concise."""
+    prompt = f"""Explain a Q-learning agent's decision in Wumpus World.
+Position: {pos} | Perceptions: {perceptions}
+Action: {step_data.action_name} | Reward: {step_data.reward}
+Q-values: {dict(zip(env.ACTION_NAMES, step_data.q_values))}
+
+2 short sentences why it chose this. Educational and concise."""
     try:
-        response = await asyncio.to_thread(client.models.generate_content, model='gemini-3.1-flash-lite-preview', contents=prompt)
-        return response.text
+        response = await api_manager.call_with_failover(_gen_content, model='gemini-3.1-flash-lite-preview', contents=prompt)
+        text = response.text
+        # Cap cache size
+        if len(_explanation_cache) < 1000:
+            _explanation_cache[cache_key] = text
+        return text
     except Exception as e:
-        return f"Gemini unavailable: {e}"
+        msg = str(e).lower()
+        if "quota" in msg or "429" in msg:
+            return "AI link saturated (429). All API keys hit rate limits. Please slow down."
+        if "key" in msg or "401" in msg or "403" in msg:
+            return "AI link error: Invalid or restricted API key. Check your configuration."
+        return f"AI connection unstable: {e}"
 
 async def get_summary(episode: int, total_reward: float, steps: int, won: bool, epsilon: float, reason: Optional[str] = None):
-    if not os.getenv("GOOGLE_API_KEY"):
+    if not api_manager.has_keys():
         return f"Episode {episode} done. Reward: {total_reward:.1f}"
     
     if won:
@@ -115,7 +136,7 @@ async def get_summary(episode: int, total_reward: float, steps: int, won: bool, 
 Episode {episode}: Agent {outcome}. Reward: {total_reward:.1f}, Steps: {steps}, Epsilon: {epsilon:.3f}.
 What does this mean for the agent's learning progress?"""
     try:
-        response = await asyncio.to_thread(client.models.generate_content, model='gemini-3.1-flash-lite-preview', contents=prompt)
+        response = await api_manager.call_with_failover(_gen_content, model='gemini-3.1-flash-lite-preview', contents=prompt)
         return response.text
     except Exception as e:
         return f"Gemini unavailable: {e}"
@@ -125,16 +146,19 @@ What does this mean for the agent's learning progress?"""
 
 @app.get("/")
 def root():
+    """Health check endpoint."""
     return {"status": "Wumpus RL API running"}
 
 @app.post("/reset", response_model=ResetResponse)
 def reset_game():
+    """Resets the environment for a new episode."""
     env.reset()
     agent.new_episode()
     return ResetResponse(state=env.get_state_dict(), episode=agent.episode, message="Reset OK")
 
 @app.post("/step", response_model=StepResponse)
 def step_game():
+    """Performs a single step in the environment."""
     if env.done:
         raise HTTPException(status_code=400, detail="Episode done. Call /reset first.")
     return perform_step()
@@ -159,7 +183,7 @@ def get_stats():
         "episode_rewards": agent.episode_rewards[-100:],
         "q_table_size": len(agent.q_table),
         "learning_rate": agent.lr, "discount": agent.gamma,
-        "has_api_key": bool(os.getenv("GOOGLE_API_KEY")),
+        "has_api_key": api_manager.has_keys(),
     }
 
 @app.get("/download_knowledge", response_class=PlainTextResponse)
@@ -255,8 +279,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         # Episode End - Start summary task but don't block the loop logic
                         if state["ai_enabled"]:
                             async def handle_summary(ep, reward, steps, won, eps, reason):
-                                summary = await get_summary(ep, reward, steps, won, eps, reason)
-                                await websocket.send_json({"type": "summary", "data": summary})
+                                try:
+                                    summary = await get_summary(ep, reward, steps, won, eps, reason)
+                                    await websocket.send_json({"type": "summary", "data": summary})
+                                except Exception:
+                                    pass # WebSocket might be closed
 
                             asyncio.create_task(handle_summary(
                                 agent.episode, agent.total_reward, state["episode_steps"],
@@ -293,8 +320,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         # AI Explanation - Non-blocking
                         if state["ai_enabled"] and agent.step_count % EXPLAIN_EVERY_N == 0:
                             async def handle_explanation(data):
-                                explanation = await get_explanation(data)
-                                await websocket.send_json({"type": "explain", "data": explanation})
+                                try:
+                                    explanation = await get_explanation(data)
+                                    await websocket.send_json({"type": "explain", "data": explanation})
+                                except Exception:
+                                    pass # WebSocket might be closed
                             asyncio.create_task(handle_explanation(step_data))
                     
                         await asyncio.sleep(state["speed"])

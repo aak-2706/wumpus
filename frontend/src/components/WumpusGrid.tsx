@@ -41,7 +41,10 @@ interface CellProps {
     isDeadFromPit: boolean;
   }
 }
-
+/**
+ * Individual cell component in the Wumpus World grid.
+ * Renders the agent, hazards (pits, wumpus), and gold with animations.
+ */
 const GridCell = React.memo(({
   row, col, cellSize, isAgent, isPit, isWumpus, isGold, isStart, perceptions, globalPerceptions, isDeadWumpus, agentAnimations, isVisible
 }: CellProps) => {
@@ -282,7 +285,10 @@ interface Props {
 function arrEq(a: number[], b: number[]) { return a[0] === b[0] && a[1] === b[1]; }
 
 const EMPTY_PERCEPTIONS = { breeze: false, stench: false, glitter: false };
-
+/**
+ * Main grid visualization for the Wumpus World environment.
+ * Handles resizing, countdowns, and mission overlays (win/loss/exhausted).
+ */
 export const WumpusGrid: React.FC<Props> = ({ state, lastAction, showStartOverlay, onStart, onOpenHelp, totalSteps = 0, currentSpeed = 800, visibilityMode = "full", visitedCells = new Set() }) => {
   const { size, agent_pos, pits, wumpus_pos, wumpus_alive, gold_pos, has_gold, perceptions, done } = state;
   const containerRef = useRef<HTMLDivElement>(null);
