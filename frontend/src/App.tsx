@@ -4,8 +4,11 @@ import {
   Activity,
   Target,
   Database,
+  Brain,
+  Zap,
+  Cpu,
   Play,
-  Square,
+  Pause,
   RotateCcw,
   MapPin,
   Info
@@ -21,14 +24,15 @@ import "./App.css";
 
 const SPEEDS = [
   { label: "0.5×", ms: 1500 }, { label: "1×", ms: 800 },
-  { label: "2×", ms: 400 }, { label: "4×", ms: 200 }, { label: "Max", ms: 50 },
+  { label: "2×", ms: 400 }, { label: "Max", ms: 50 },
 ];
 
 const EMPTY_ARRAY: number[] = [];
 
 export default function App() {
   const { gameState, stats, log, isRunning, speed, setSpeed,
-    lastStep, aiNarration, episodeSummary, start, stop, reset } = useGameLoop();
+    lastStep, aiNarration, episodeSummary, start, stop, reset, setAiEnabled, init,
+    visibilityMode, toggleVisibility, visitedCells } = useGameLoop();
 
   const [isExplainEnabled, setIsExplainEnabled] = React.useState(false);
   const [isHelpOpen, setIsHelpOpen] = React.useState(false);
@@ -38,8 +42,12 @@ export default function App() {
   const totalSteps = lastStep?.total_steps ?? stats?.total_steps ?? 0;
   const qTableSize = stats?.q_table_size ?? 0;
 
+  const hasApiKey = stats?.has_api_key ?? true;
+
   return (
-    <div className="app">
+    <div className="app crt-container">
+      <div className="crt-overlay"></div>
+      <div className="vignette"></div>
 
       <main className="app-main">
 
@@ -51,51 +59,65 @@ export default function App() {
                 <MapPin size={14} /> Wumpus World
               </span>
               <div className="controls" style={{ margin: 0 }}>
-                {isRunning && (
+                {isRunning ? (
                   <button
                     className="btn btn-stop"
                     onClick={stop}
                     style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                   >
-                    <Square size={16} fill="currentColor" /> Stop
+                    <Pause size={16} fill="currentColor" /> Pause
                   </button>
-                )}
-                
-                {/* Only show Reset/Speed if simulation has started or is running */}
-                {(totalSteps > 0 || isRunning) && (
-                  <>
+                ) : (
+                  (totalSteps > 0 || gameState) && (
                     <button
                       className="btn btn-reset"
                       onClick={reset}
-                      disabled={isRunning}
                       style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
-                      <RotateCcw size={16} />
-                      Reset
+                      <RotateCcw size={16} /> Reset
                     </button>
-                    <div className="speed-group" style={{ marginLeft: '4px' }}>
-                      {SPEEDS.map((s) => (
-                        <button
-                          key={s.ms}
-                          className={`speed-btn ${speed === s.ms ? "speed-active" : ""}`}
-                          onClick={() => setSpeed(s.ms)}
-                        >
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
+                  )
+                )}
+
+                {gameState && (
+                  <div className="visibility-toggle" style={{ marginLeft: '8px' }}>
+                    <button
+                      className={`btn ${visibilityMode === "agent" ? "btn-active" : "btn-reset"}`}
+                      onClick={toggleVisibility}
+                      title={visibilityMode === "full" ? "Switch to Agent View" : "Switch to Full View"}
+                      style={{ fontSize: '9px', padding: '5px 10px' }}
+                    >
+                      {visibilityMode === "full" ? "FULL VIS" : "AGENT VIS"}
+                    </button>
+                  </div>
+                )}
+
+                {gameState && (
+                  <div className="speed-group" style={{ marginLeft: '4px' }}>
+                    {SPEEDS.map((s) => (
+                      <button
+                        key={s.ms}
+                        className={`speed-btn ${speed === s.ms ? "speed-active" : ""}`}
+                        onClick={() => setSpeed(s.ms)}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
             {gameState
               ? <WumpusGrid
                 state={gameState}
+                lastAction={lastStep?.action_name}
                 showStartOverlay={!isRunning && !gameState.done}
                 totalSteps={totalSteps}
                 onStart={start}
                 onOpenHelp={() => setIsHelpOpen(true)}
                 currentSpeed={speed}
+                visibilityMode={visibilityMode}
+                visitedCells={visitedCells}
               />
               : <div className="loading-grid" style={{ position: 'relative' }}>
                   <Skeleton variant="grid" style={{ maxWidth: '400px', aspectRatio: '1/1', opacity: 0.4 }} />
@@ -106,7 +128,7 @@ export default function App() {
                       whileHover={{ scale: 1.05, boxShadow: "0 0 20px rgba(0, 229, 255, 0.4)" }}
                       whileTap={{ scale: 0.95 }}
                       className="btn btn-hero-start"
-                      onClick={start}
+                      onClick={init}
                     >
                       <Play size={20} fill="currentColor" />
                       <span>Initialize Mission</span>
@@ -138,7 +160,7 @@ export default function App() {
         <section className="col-stats">
           <div className="panel panel-progress" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             <div className="panel-title">
-              <span>📈 Performance</span>
+              <span><Activity size={14} style={{ marginRight: '6px' }} /> Performance</span>
               <TitleStat label="Episode" value={episode} icon={<Activity size={12} />} />
             </div>
             <div style={{ flex: 1, minHeight: '150px' }}>
@@ -148,7 +170,7 @@ export default function App() {
 
           <div className="panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             <div className="panel-title">
-              <span>🧠 Decision Matrix</span>
+              <span><Brain size={14} style={{ marginRight: '6px' }} /> Decision Matrix</span>
               <TitleStat label="Memory" value={qTableSize} icon={<Database size={12} />} />
             </div>
             <div style={{ flex: 1, minHeight: '120px', overflowY: 'auto' }}>
@@ -162,7 +184,7 @@ export default function App() {
 
           <div className="panel panel-epsilon">
             <div className="panel-title">
-              <span>🎲 Heuristic ε</span>
+              <span><Zap size={14} style={{ marginRight: '6px' }} /> Heuristic ε</span>
               <TitleStat label="Curiosity" value={epsilon.toFixed(3)} accent icon={<Info size={12} />} />
             </div>
             <div className="epsilon-bar-track">
@@ -200,15 +222,20 @@ export default function App() {
         <section className="col-logs">
           <div className="panel panel-ai">
             <div className="panel-title">
-              <span>🤖 Neural Link</span>
-              <label className="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  checked={isExplainEnabled} 
-                  onChange={(e) => setIsExplainEnabled(e.target.checked)} 
-                />
-                <span className="toggle-slider"></span>
-              </label>
+              <span><Cpu size={14} style={{ marginRight: '6px' }} /> Neural Link</span>
+              <button
+                className={`btn ${!hasApiKey ? "btn-disabled" : isExplainEnabled ? "btn-active" : "btn-reset"}`}
+                style={{ fontSize: '9px', padding: '3px 10px', minHeight: 'auto' }}
+                disabled={!hasApiKey}
+                onClick={() => {
+                  const val = !isExplainEnabled;
+                  setIsExplainEnabled(val);
+                  setAiEnabled(val);
+                }}
+                title={!hasApiKey ? "Set GOOGLE_API_KEY in .env to enable" : ""}
+              >
+                {!hasApiKey ? "AI UNAVAILABLE" : isExplainEnabled ? "LINK ACTIVE" : "LINK OFFLINE"}
+              </button>
             </div>
             <div className="ai-content">
               {isExplainEnabled ? (
@@ -270,7 +297,7 @@ export default function App() {
 
           <div className="panel panel-log">
             <div className="panel-title">
-              <span>📋 Mission Feed</span>
+              <span><Target size={14} style={{ marginRight: '6px' }} /> Mission Feed</span>
               <TitleStat label="Steps" value={totalSteps} icon={<Target size={12} />} />
             </div>
             <ActionLog entries={log} />

@@ -41,6 +41,7 @@ export interface StatsResponse {
   q_table_size: number;
   learning_rate: number;
   discount: number;
+  has_api_key: boolean;
 }
 
 export interface LogEntry {

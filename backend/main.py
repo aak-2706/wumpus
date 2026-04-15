@@ -159,6 +159,7 @@ def get_stats():
         "episode_rewards": agent.episode_rewards[-100:],
         "q_table_size": len(agent.q_table),
         "learning_rate": agent.lr, "discount": agent.gamma,
+        "has_api_key": bool(os.getenv("GOOGLE_API_KEY")),
     }
 
 @app.get("/download_knowledge", response_class=PlainTextResponse)
@@ -222,7 +223,7 @@ async def summarize_episode_route(req: EpisodeSummaryRequest):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     
-    state = {"running": False, "speed": 0.8, "episode_steps": 0}
+    state = {"running": False, "speed": 0.8, "episode_steps": 0, "ai_enabled": False}
     MAX_STEPS_PER_EPISODE = 60
     EXPLAIN_EVERY_N = 5
 
@@ -252,22 +253,23 @@ async def websocket_endpoint(websocket: WebSocket):
                             })
                         
                         # Episode End - Start summary task but don't block the loop logic
-                        async def handle_summary(ep, reward, steps, won, eps, reason):
-                            summary = await get_summary(ep, reward, steps, won, eps, reason)
-                            await websocket.send_json({"type": "summary", "data": summary})
+                        if state["ai_enabled"]:
+                            async def handle_summary(ep, reward, steps, won, eps, reason):
+                                summary = await get_summary(ep, reward, steps, won, eps, reason)
+                                await websocket.send_json({"type": "summary", "data": summary})
 
-                        asyncio.create_task(handle_summary(
-                            agent.episode, agent.total_reward, state["episode_steps"],
-                            env.has_gold, agent.epsilon, env.done_reason
-                        ))
+                            asyncio.create_task(handle_summary(
+                                agent.episode, agent.total_reward, state["episode_steps"],
+                                env.has_gold, agent.epsilon, env.done_reason
+                            ))
                         
                         # Stats update
                         stats = get_stats()
                         await websocket.send_json({"type": "stats", "data": stats})
                         
                         # Dynamic wait: Scale 3.0s base wait by (current_speed / 0.8s baseline)
-                        # Min wait 0.2s, Max wait 4.0s
-                        wait_time = max(0.2, min(4.0, 3.0 * (state["speed"] / 0.8)))
+                        # Min wait 1.5s, Max wait 4.0s
+                        wait_time = max(1.5, min(4.0, 3.0 * (state["speed"] / 0.8)))
                         await asyncio.sleep(wait_time)
                         
                         # Reset for next episode
@@ -289,7 +291,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             await websocket.send_json({"type": "stats", "data": get_stats()})
                         
                         # AI Explanation - Non-blocking
-                        if agent.step_count % EXPLAIN_EVERY_N == 0:
+                        if state["ai_enabled"] and agent.step_count % EXPLAIN_EVERY_N == 0:
                             async def handle_explanation(data):
                                 explanation = await get_explanation(data)
                                 await websocket.send_json({"type": "explain", "data": explanation})
@@ -317,6 +319,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 state["running"] = False
             elif cmd == "set_speed":
                 state["speed"] = data["speed"] / 1000.0
+            elif cmd == "toggle_ai":
+                state["ai_enabled"] = data.get("enabled", False)
             elif cmd == "reset":
                 state["running"] = False
                 # Full reset logic

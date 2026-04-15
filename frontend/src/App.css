@@ -76,6 +76,47 @@ body {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  position: relative;
+}
+
+/* ── CRT & Cyber Effects ────────────────────────────────────────────────── */
+.crt-container {
+  position: relative;
+}
+
+.crt-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%);
+  background-size: 100% 4px;
+  opacity: 0.8;
+}
+
+.crt-overlay::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  inset: 0;
+  background: rgba(18, 16, 16, 0.05);
+  opacity: 0;
+  pointer-events: none;
+  animation: flicker 0.15s infinite;
+}
+
+@keyframes flicker {
+  0% { opacity: 0.02; }
+  50% { opacity: 0; }
+  100% { opacity: 0.01; }
+}
+
+.vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  background: radial-gradient(circle, transparent 50%, rgba(5, 10, 16, 0.8) 150%);
 }
 
 /* ── Inline title stat badges ──────────────────────────────────────────── */
@@ -198,8 +239,9 @@ body {
 }
 
 .panel:hover::after {
-  border-color: rgba(0, 229, 255, 0.25);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6), 0 0 1px rgba(0, 229, 255, 0.15);
+  background: linear-gradient(135deg, rgba(8, 16, 26, 0.8), rgba(8, 16, 26, 0.9));
+  border-color: rgba(0, 229, 255, 0.35);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 229, 255, 0.05);
 }
 
 .panel-title {
@@ -250,7 +292,7 @@ body {
 .stat-box:hover {
   transform: translateY(-2px);
   border-color: rgba(0, 229, 255, 0.3);
-  box-shadow: var(--glow-sm);
+  box-shadow: var(--glow-sm), inset 0 0 10px rgba(0, 229, 255, 0.1);
 }
 
 .panel-horizontal {
@@ -320,7 +362,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 20px;
   transition: background var(--t-base), border-color var(--t-base), box-shadow var(--t-base);
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
   background: rgba(17, 34, 54, 0.4);
@@ -346,10 +388,30 @@ body {
   box-shadow: inset 0 0 15px rgba(255, 85, 85, 0.1);
 }
 
-.cell-wumpus {
-  background: rgba(255, 184, 108, 0.1);
-  border-color: rgba(255, 184, 108, 0.3);
-  box-shadow: inset 0 0 15px rgba(255, 184, 108, 0.1);
+.cell-hidden {
+  background: #000 !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+  box-shadow: none !important;
+  opacity: 0.8;
+}
+
+.cell-hidden .cell-coord {
+  opacity: 0;
+}
+
+.btn-active {
+  background: var(--accent) !important;
+  color: #000 !important;
+  box-shadow: var(--glow-md) !important;
+}
+
+.btn-disabled {
+  background: var(--bg3) !important;
+  color: var(--text3) !important;
+  border: 1px solid var(--border) !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+  opacity: 0.6;
 }
 
 .cell-coord {
@@ -448,6 +510,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  z-index: 5;
 }
 
 .agent-icon {
@@ -511,6 +574,7 @@ body {
 .btn-start:hover {
   box-shadow: var(--glow-md);
   transform: translateY(-1px);
+  filter: drop-shadow(-1px 0 2px rgba(255, 30, 90, 0.6)) drop-shadow(1px 0 2px rgba(0, 229, 255, 0.8));
 }
 
 .btn-stop {
@@ -521,6 +585,7 @@ body {
 .btn-stop:hover {
   opacity: 0.9;
   transform: translateY(-1px);
+  filter: drop-shadow(-1px 0 2px rgba(255, 85, 85, 0.6)) drop-shadow(1px 0 2px rgba(255, 0, 0, 0.8));
 }
 
 .btn-reset {
@@ -533,6 +598,7 @@ body {
   border-color: rgba(0, 229, 255, 0.4);
   color: var(--accent);
   box-shadow: var(--glow-sm);
+  filter: drop-shadow(-1px 0 1px rgba(255, 255, 255, 0.2)) drop-shadow(1px 0 1px rgba(0, 229, 255, 0.4));
 }
 
 .btn-reset:disabled {

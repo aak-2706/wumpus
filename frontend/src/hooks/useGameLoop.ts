@@ -11,6 +11,8 @@ export function useGameLoop() {
   const [lastStep, setLastStep]         = useState<StepResponse | null>(null);
   const [aiNarration, setAiNarration]   = useState("");
   const [episodeSummary, setEpisodeSummary] = useState("");
+  const [visibilityMode, setVisibilityMode] = useState<"full" | "agent">("full");
+  const [visitedCells, setVisitedCells] = useState<Set<string>>(new Set(["0,0"]));
 
   const logIdRef = useRef(0);
 
@@ -19,6 +21,13 @@ export function useGameLoop() {
       { ...entry, id: logIdRef.current++, timestamp: Date.now() },
       ...prev,
     ].slice(0, 80));
+    
+    // Track visited cells
+    setVisitedCells(prev => {
+      const next = new Set(prev);
+      next.add(`${entry.pos[0]},${entry.pos[1]}`);
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -46,6 +55,7 @@ export function useGameLoop() {
           break;
         case "reset": {
           setGameState(msg.data.state);
+          setVisitedCells(new Set(["0,0"]));
           break;
         }
         case "full_reset":
@@ -54,6 +64,7 @@ export function useGameLoop() {
           setLastStep(null);
           setAiNarration("");
           setEpisodeSummary("");
+          setVisitedCells(new Set(["0,0"]));
           break;
       }
     });
@@ -64,6 +75,17 @@ export function useGameLoop() {
     setIsRunning(true);
     wsClient.sendCommand({ command: "start", speed });
   }, [speed]);
+
+  const init = useCallback(async () => {
+    try {
+      const res = await fetch("http://localhost:8000/reset", { method: "POST" });
+      const data = await res.json();
+      setGameState(data.state);
+      setVisitedCells(new Set(["0,0"]));
+    } catch (err) {
+      console.error("Initialization failed:", err);
+    }
+  }, []);
 
   const stop = useCallback(() => {
     setIsRunning(false);
@@ -87,8 +109,17 @@ export function useGameLoop() {
     wsClient.sendCommand({ command: "set_speed", speed: newSpeed });
   }, []);
 
+  const setAiEnabled = useCallback((enabled: boolean) => {
+    wsClient.sendCommand({ command: "toggle_ai", enabled });
+  }, []);
+
+  const toggleVisibility = useCallback(() => {
+    setVisibilityMode(prev => prev === "full" ? "agent" : "full");
+  }, []);
+
   return { 
     gameState, stats, log, isRunning, speed, setSpeed: updateSpeed,
-    lastStep, aiNarration, episodeSummary, start, stop, reset 
+    lastStep, aiNarration, episodeSummary, start, stop, reset, setAiEnabled, init,
+    visibilityMode, toggleVisibility, visitedCells
   };
 }
